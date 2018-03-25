@@ -1,0 +1,539 @@
+  - Flume & Kafka, can be used for real time streaming and load in to target to realize the analytics as quickly as posible.
+  - Getting data from webserver logs
+  - We will be using the third part tools can be used 
+  
+  - Agenda: Ingest data into HDFS - flume.
+  - Different implementations in flume.
+  - Getting started with Kafka
+  - Integration - Flume and spark streaming
+  - Integration - Flume and kafka
+  - Integration - Kafka and spark streaming
+  
+  - Now, in some cases both complement each other by getting the data in to flume and port it into kafka and port it into nosql database
+  
+  - Objectives: Tranfer the data from the external system into your cluster
+	- Import data from MySql to HDFS using sqoop
+	- Change the delimeter and fileformat of data during import using sqoop
+	- ingest realtime and near - realtime streaming data into HDFS
+	- Process streaming data as loaded onto the cluster
+	- Load data into and out to HDFS using Hadoop File System commands
+	
+	- Flume always runs as an agent ( source + channel + sink) Source = webserver logs. Then data streammed through channel(memory / file channel). Sink to read the data from channel and push the data to HDFS / data
+	
+	
+// sample config file
+  
+# example.conf: A single-node Flume configuration
+
+# Name the components on this agent
+a1.sources = r1 # a1 is called agent
+a1.sinks = k1 
+a1.channels = c1
+
+# Describe/configure the source
+a1.sources.r1.type = netcat # is a webserver simulator
+a1.sources.r1.bind = localhost
+a1.sources.r1.port = 44444
+
+# Describe the sink
+a1.sinks.k1.type = logger # will allow to any information in webservice, running on localhost with port 44444 and print the data on the webservice itself
+
+# Use a channel which buffers events in memory
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 1000
+a1.channels.c1.transactionCapacity = 100
+
+# Bind the source and sink to the channel
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+	-- starting a flume agent
+//flume-ng will give the list of commands that are required for using  flume
+
+//flume-ng agent --name a1 --conf-file /home/kazaparv_gmail_com/Flume_demo/example.conf
+
+	18/03/09 11:58:50 INFO node.Application: Starting Channel c1             
+	18/03/09 11:58:50 INFO instrumentation.MonitoredCounterGroup: Monitored counter group for type: CHANNEL, name: c1: Successfully registered new MBean.
+	18/03/09 11:58:50 INFO instrumentation.MonitoredCounterGroup: Component type: CHANNEL, name: c1 started        
+	18/03/09 11:58:50 INFO node.Application: Starting Sink k1                
+	18/03/09 11:58:50 INFO node.Application: Starting Source r1              
+	18/03/09 11:58:50 INFO source.NetcatSource: Source starting              
+	18/03/09 11:58:50 INFO source.NetcatSource: Created serverSocket:sun.nio.ch.ServerSocketChannelImpl[/127.0.0.1:44444]   
+
+	-- Now, open another shell and type
+		kazaparv_gmail_com@cloudera:~$ telnet localhost 44444 
+		Trying 127.0.0.1...                
+		Connected to localhost.            
+		Escape character is '^]'.          
+		Hello kaza. supp how are the kids man. long time no see?                 
+		OK                 
+		
+	-- Now, comeback to the flume agent and look at the result
+		18/03/09 12:02:16 INFO sink.LoggerSink: Event: { headers:{} body: 48 65 6C 6C 6F 20 6B 61 7A 61 2E 20 73 75 70 70 Hello kaza. supp }   
+		
+		
+	-- Now lets get the webserver logs to HDFS and see these details
+		- Sources can be of mutltiple files
+			- Exec, Thrift, Avro,JMS
+		- Sinks can be of mutltiple types
+			- Avro, HIVE, HDFS, Logger,Thrift,IRC, File Roll, Null, Hbase
+		- Channel will be responsible to queue up the data in micro batches and will be passed to sink at regular intervals
+			- Memory, JDBC, Kafka
+			
+	-- Now our problem statement says
+		- get data from webserver logs to HDFS
+		- Soruce exec
+		- Sink HDFS
+		- Channel Memory
+		
+	-- Now setting up data
+			- get the following data "https://github.com/dgadiraju/code" and copy the scripts under /hadoop/edw from this downloaded zip file to local directory.
+			- Now create a folder calls wstohdfslog
+			- copy the previous create file called example.conf
+			- rename the file name to wstohdfslog
+			- then open the file name
+			- After that, replace the characters from A1 to wh ib "vi Editor" by using the replace commad by using "%s/A1/wh"
+			- After that, replace the characters from c1 to mem ib "vi Editor" by using the replace commad by using "%s/c1/mem
+			- After that, change the source type from "Netcat" to "exec"
+			- For the exec kind of source, we would not need the bind & port in "access.log" file. With that being said
+			- wh.sources.ws.command = tail -F /home/kazaparv_gmail_com/scripts/scripts/gen_logs/logs/access.log
+			- Save the file with :wq
+
+					# example.conf: A single-node Flume configuration
+
+					# Name the components on this agent
+					wh.sources = ws # a1 is called agent
+					wh.sinks = k1
+					wh.channels = mem
+
+					# Describe/configure the source
+					wh.sources.ws.type = exec # is a webserver simulator
+					wh.sources.ws.command = "tail -F /home/kazaparv_gmail_com/scripts/scripts/gen_logs/logs/access.log"
+					
+
+					# Describe the sink
+					wh.sinks.k1.type = logger
+
+					# Use a channel which buffers events in memory
+					wh.channels.mem.type = memory
+					wh.channels.mem.capacity = 1000
+					wh.channels.mem.transactionCapacity = 100
+
+					# Bind the source and sink to the channel
+					wh.sources.ws.channels = mem
+					wh.sinks.k1.channel = mem
+
+											
+	- Now start the flume agent to execute the conf file created
+//flume-ng agent -n wh -f /home/kazaparv_gmail_com/wslogstohdfs/wshdfs.conf
+		- Now this would need to start a logger and print the o/p: to the console as we have used the sink as logger
+		
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 31 39 32 2E 38 37 2E 31 37 35 2E 31 38 36 20 2D 192.87.175.186 - }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 31 39 35 2E 32 33 31 2E 32 2E 32 30 37 20 2D 20 195.231.2.207 -  }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 36 35 2E 36 32 2E 31 38 33 2E 32 34 34 20 2D 20 65.62.183.244 -  }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 38 39 2E 39 32 2E 31 32 38 2E 31 35 35 20 2D 20 89.92.128.155 -  }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 33 30 2E 31 30 30 2E 31 39 39 2E 38 20 2D 20 2D 30.100.199.8 - - }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 36 39 2E 34 37 2E 32 34 36 2E 37 36 20 2D 20 2D 69.47.246.76 - - }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 37 31 2E 38 32 2E 31 39 2E 32 34 31 20 2D 20 2D 71.82.19.241 - - }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 31 37 38 2E 36 34 2E 32 31 36 2E 36 20 2D 20 2D 178.64.216.6 - - }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 32 31 31 2E 36 30 2E 32 33 31 2E 37 32 20 2D 20 211.60.231.72 -  }
+			18/03/10 19:17:42 INFO sink.LoggerSink: Event: { headers:{} body: 39 34 2E 31 39 32 2E 31 31 2E 35 30 20 2D 20 2D 94.192.11.50 - - }  
+			
+		-- Now to print the logger data to Hdfs
+			- we will change the sniks type to "hd" from "k1" as convention for hdfs %s/k1/hd
+			- then add path for #describe sink "wh.sinks.hd.hdfs.path = "hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo"
+				- which will create a the target data to be loaded directly to hdfs UNDER Flume_demo
+				- Note: Path provided for sink should be relative path that can be found in core-site.xml under /etc/hadoop/conf directories
+
+
+		- Now start the flume agent to execute the conf file created
+
+		
+//flume-ng agent -n wh -f /home/kazaparv_gmail_com/wslogstohdfs/wshdfs.conf
+	
+	- Now, open hdfs and the go over to the path Flume_demo, you will notice the .tmp files created and the o/p under the console can be seen as
+		18/03/10 19:38:07 INFO hdfs.BucketWriter: Creating hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687560.tmp   
+		18/03/10 19:38:09 INFO hdfs.BucketWriter: Closing hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687560.tmp    
+		18/03/10 19:38:09 INFO hdfs.BucketWriter: Renaming hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687560.tmp to hdfs://cloudera.mettl.com:802
+		0/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687560
+		18/03/10 19:38:09 INFO hdfs.BucketWriter: Creating hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687561.tmp   
+		18/03/10 19:38:39 INFO hdfs.BucketWriter: Closing hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687561.tmp    
+		18/03/10 19:38:39 INFO hdfs.BucketWriter: Renaming hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687561.tmp to hdfs://cloudera.mettl.com:802
+		0/user/kazaparv_gmail_com/flume_demo/FlumeData.1520710687561  
+		
+		-- Sink: HDFS properties
+			* Roll Interval - 30 ( Time in seconds)
+			* Roll Size - Default size is 1024
+			* Roll count - 10 is the default the number of events that can considered.
+			* filetype - sequence file, by default. However compression techquies can be used and be converted to text files
+			
+	- Now, setting the config files
+	
+		wh.sinks.hd.hdfs.filePrefix = FlumeDemo   
+		wh.sinks.hd.hdfs.fileSuffix = .txt        
+		wh.sinks.hd.hdfs.rollInterval = 120       
+		wh.sinks.hd.hdfs.rollSize = 1048576 # 1024 * 1024
+		wh.sinks.hd.hdfs.rollCount = 100          
+		wh.sinks.hd.hdfs.fileType = DataStream # by default it will be a sequencefile
+	
+
+					# example.conf: A single-node Flume configuration
+
+					# Name the components on this agent
+					wh.sources = ws # a1 is called agent
+					wh.sinks = hdfs
+					wh.channels = mem
+
+					# Describe/configure the source
+					wh.sources.ws.type = exec # is a webserver simulator
+					wh.sources.ws.command = "tail -F /home/kazaparv_gmail_com/scripts/scripts/gen_logs/logs/access.log"
+					
+
+					# Describe the sink
+					wh.sinks.hd.hdfs.type = hdfs
+					wh.sinks.hd.hdfs.path= "hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo"
+
+					# Use a channel which buffers events in memory
+					wh.channels.mem.type = memory
+					wh.channels.mem.capacity = 1000
+					wh.channels.mem.transactionCapacity = 100
+
+					# Bind the source and sink to the channel
+					wh.sources.ws.channels = mem
+					wh.sinks.ws.channel = mem
+
+					
+	- Now execute the agent
+
+// flume-ng agent -n wh -f /home/kazaparv_gmail_com/wslogstohdfs/wshdfs.conf
+
+	will give the output as 
+	18/03/10 20:48:31 INFO source.ExecSource: Exec source starting with command: tail -F /home/kazaparv_gmail_com/scripts/scripts/gen_logs/logs/access.log  
+	18/03/10 20:48:31 INFO instrumentation.MonitoredCounterGroup: Monitored counter group for type: SOURCE, name: ws: Successfully registered new MBean.    
+	18/03/10 20:48:31 INFO instrumentation.MonitoredCounterGroup: Component type: SOURCE, name: ws started
+	18/03/10 20:48:31 INFO instrumentation.MonitoredCounterGroup: Monitored counter group for type: SINK, name: hd: Successfully registered new MBean. 
+	18/03/10 20:48:31 INFO instrumentation.MonitoredCounterGroup: Component type: SINK, name: hd started  
+	18/03/10 20:48:35 INFO hdfs.HDFSDataStream: Serializer = TEXT, UseRawLocalFileSystem = false
+	18/03/10 20:48:35 INFO hdfs.BucketWriter: Creating hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt.tmp    
+	18/03/10 20:50:36 INFO hdfs.BucketWriter: Closing hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt.tmp
+	18/03/10 20:50:36 INFO hdfs.BucketWriter: Renaming hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt.tmp to hdfs://cloudera.mettl.com
+	:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt
+	
+	And by going to Hadoop file system
+//hadoop fs -ls /user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt.tmp
+	-- you will see the file size,count and type of file
+	-- you could also do a wc -l
+
+//hadoop fs -ls /user/kazaparv_gmail_com/flume_demo/FlumeDemo.1520714915073.txt.tmp|wc -lets
+	o/p:
+	10
+	
+	
+	-- Meomory channel deep dive:
+	-- Issue: Agent sometime files due to limitation of memory being used and might not load data in to Hdfs. To avoid such issues, we should remember two things
+		- capacity - 100 by default (max events stored in the channel) - total number of messages that can be stored - ( overll memory size)
+		- transaction capacity - 100 by default (max events sored in channel will atake from a soruce or give to sink per transaction) -  (overll data size, per transaction, by source / by sink)
+	
+	-- Flume is deploy the jobs on the gateway node
+		-- it doesnt have any demon processes
+		-- when we launch flume, we launch flume, it will be launhed on the gateway node where it is required to deploy jobs
+		
+	
+	-- Flume can be used, to configure different type of agents
+		-- Multi-Agent - o/p: of one agent passed to another agent. This is can be done by Avro sink and source - have RPC that can used for webservice.
+		-- Consolidation - o/p: will take the sources from multiple webserver logs; data has to consolidate and then downstream it to target and then sink the data 	to Hdfs	
+		-- Multiplexing - O/P: will take the data from single sources and then create multiple chan and then write the o/p from multiple channels to multiple sinks and the sinked data can be sent to mutltiple targets
+		-- Note: One channel cannot write the data to multiple sinks ever.
+		
+	-- Kafka
+	
+		-- "prodcuers"
+		-- "consumer"
+		-- will have webapplication connected to kafka cluster ( prodcuers) that sends data to cluster
+		-- will have webapplication connected to kafka cluster ( consumers) will recieve data from cluster and then downstream the data
+		-- The main reason for kafka cluster is to create subscriptions to cluster, then get data and run downstream applications that can help analytics
+		-- kafka has also has stream process and stream api
+		-- connectors can be used to connect to the databases
+		-- Note: if there is a new webapplication available, then an kafka - prodcuer - api can be used to capture data in kafka cluster
+		-- topic : is created in kafka cluster, that captures necessary data to it
+		
+	-- creating a Topic
+		-- Needs zookeper, that is required to maintain the topics
+		
+		-- To test and evaluate Kafka & create topic
+		
+// bin/kafka-topics.sh --create --zookeeper datanode1-cloudera.mettl.com:2181,datanode2-cloudera.mettl.com:2181,datanode3-cloudera.mettl.com:2181 --replication-factor 1 --partitions 1 --topic test
+	
+	-- list the topics
+
+// kafka-topics.sh --list --zookeeper datanode1-cloudera.mettl.com:2181,datanode2-cloudera.mettl.com:2181,datanode3-cloudera.mettl.com:2181 --replication-factor 1 --partitions 1 --topic kafkademodg
+
+	-- to produce the details or topics
+
+// kafka-console-producer.sh --broker-list datanode1-cloudera.mettl.com:9092,datanode2-cloudera.mettl.com:9092,datanode3-cloudera.mettl.com:9092 --topic kafkademodg
+
+	-- to consume the topics in kafka
+
+// kafka-console-consumer.sh --bootstrap-server datanode1-cloudera.mettl.com:9092,datanode2-cloudera.mettl.com:9092,datanode3-cloudera.mettl.com:9092 --topic kafkademodg --from-beginning ( works in 0.9 kafka version)
+
+	-- consumer using zookeeper
+
+// kafka-console-consumer.sh --zookeeper datanode1-cloudera.mettl.com:9092,datanode2-cloudera.mettl.com:9092,datanode3-cloudera.mettl.com:9092 --topic kafkademodg --from-beginning ( works in 0.8 kafka version)
+
+
+
+	-- kakfa logs will allow to store the topics in the logging, based on the partitons available
+
+// replication - can relicate topics
+// off-sett - position of the last message from a topi c from a partition
+// publisher -  publish the messages from a topic
+// consumer - can be a single / group to created to facilitate the topic
+// Topic - can be partitioned for scalability & which captures stream of messages. they can be cloned as well
+
+
+To handle multiplexing scenarios in Flume, Kafka can fix the issue.
+
+
+The best solutions are use Flume, to take the streaming data and send it kafka and the stream the data using spark. Once this is done, throw the data back the necessary destination.
+
+	-- Spark context is to offile batch jobs. Streaming context will continously does polling to the defined source location, based on the settings. 
+	-- Note:  If you wanted to use streaming context, then i believe spark context should be avoided
+
+import org.apache.spark.streaming._	
+import org.apache.spark.SparkConf
+val conf = new SparkConf().setAppName("streaming").setMaster("yarn-client")	
+
+val conf = new SparkConf().setMaster("local").setAppName("WordCount")
+val ssc = new StreamingContext(conf, Seconds(10)) 
+
+	-- now lest setup streaming a wordcount
+		- develop a program, create a jar file and then move this into cluster
+		
+	-- To test the netcat on linux, run	
+		- shell1:- nc -lk 9998
+		- shell2:- telnet localhost 9998 
+			and then type free text here and should see the same msg in shell1
+			
+		- create a file called build.sbt
+			
+				name := "retail"
+				version := "1.0"
+				scalaVersion := "2.10.6"
+				
+				libraryDependencies += "org.apache.spark" % "spark-core_2.10" % "1.6.3"
+				libraryDependencies += "org.apache.spark" % "spark-streaming_2.10" % "1.6.3"
+			
+			
+		Now run sbt console and wait till you see a scala cmd line
+			- run the following commands
+			
+			
+			
+			import org.apache.spark.streaming._	
+			import org.apache.spark.SparkConf
+			val conf = new SparkConf().setAppName("New wordcount").setMaster("local")	
+			val ssc = new StreamingContext(conf, Seconds(10)) 
+			
+			val lines = ssc.socketTextStream("localhost", 9998)			
+			o/p: lines: org.apache.spark.streaming.dstream.ReceiverInputDStream[String] = org.apache.spark.streaming.dstream.SocketInputDStream@14afca09 
+			
+			-- Note: Dstream is a series of RDD's which are read during streaming with a given time intervals. It is also called as Descritized streaming which will create rdd's, if there is any data for every time interval, unless exit is observed.
+			
+			-- Lets create a wordcount program 
+			
+			val wordcount = lines.flatMap( s => s.split(" "))
+			val wc = wordcount.map( wc => (wc,1))
+			val counts = wc.reduceByKey((t,v) => t+v)
+			
+			counts.print()
+			ssc.start();			
+			ssc.awaitTerminantion() -- This cannot be execute, after it started.But needed in the code
+			
+			- Now let us create this a program, by creating the jar file in thw pwd with the "StreamingWordCount.scala"
+				
+			import org.apache.spark.streaming._	
+			import org.apache.spark.SparkConf
+			
+			object  StreamingWordCount{ 
+			
+				def main(args: Array[string]) {
+					val executionMode = args(0)
+					val conf = new SparkConf().setAppName("New wordcount").setMaster("local")	
+					val ssc = new StreamingContext(conf, Seconds(10)) 
+					val lines = ssc.socketTextStream(args(1), args(2).toInt)			
+					val wordcount = lines.flatMap( s => s.split(" "))
+					val wc = wordcount.map( wc => (wc,1))
+					val counts = wc.reduceByKey((t,v) => t+v)
+					counts.print()
+					ssc.start()
+					ssc.awaitTerminantion() 
+					
+												}
+											}	
+											
+											
+			-- Now, run the command "sbt package" that will pick up the above code and then create the jar file
+				
+			-- Run the Jar files, to execute the code. However, you have to make sure that there is anoher window that could display results
+			
+			
+	-- Problem Statement*
+		- Get Department wise traffic for every 30 seconds
+			- Read the data from Retail Rdd's
+			- Compute the dept traffice for every 3o seconds
+			- Save the output to Hdfs
+			
+		- Solution
+			- Use Spark Streaming
+			- Publish messages from retail_db logs to netcat
+			- create a Dstream
+			- Process and save the output
+			
+
+	--	Code for creating a file that creates department wise count
+			import org.apache.spark.SparkConf     
+			import org.apache.spark.streaming. {StreamingContext, Seconds}      
+					
+			object StreamingDeptTraffic {         
+					
+			def main(args: Array[String]) {       
+			val conf = new SparkConf().setAppName("New wordcount").setMaster(args(0))     
+			val ssc = new StreamingContext( conf, Seconds(30))        
+			val msgs = ssc.socketTextStream(args(1), args(2).toInt)   
+			val deptMsgs = msgs.filter( msg => { val endpoint = msg.split(" ")(6); (endpoint.split("/")(1) == "department")})     
+			val message = deptMsgs.map( rec => { val endpoint = rec.split(" ")(6); (endpoint.split("/")(2),1)})         
+			val deptTraffic = message.reduceByKey( (total, value) => total + value)       
+			deptTraffic.saveAsTextFiles("/user/kazaparv_gmail_com/deptTraffic_data/ord")  
+					
+			ssc.start()       
+			ssc.awaitTermination() }    
+			}             
+			
+		-- Now save the file as StreamingDeptTraffic.scala and run the cmd called "sbt pacakage" to complie this code
+		-- To create the jar file, run the following command
+			- scp /target/kazaparv_gmail_com/retai_1.0-2.10.jar 	
+			- scp target/scala-2.10/retail_2.10-1.0.jar datanode3-cloudera.mettl.com:~
+			
+		-- for demo purpose, run the file "tail-logs.sh" should display the log files and then append this to a webserevice, so that our program can pull up dept details		 
+		 -- tail-logs.sh | nc -lk cloudera.mettl.com 8123, this will display an interactive webservice running department files.
+		 
+		 -- Now, to the results in MR with the help of streaming analtics, run the following command
+		-- spark-submit	--class StreamingDeptTraffic --master yarn --conf spark.ui.port=4401 ./target/scala-2.10/retail_2.10-1.0.jar yarn-client cloudera.mettl.com 8123
+		-- will dislay the data ( dept name, count)
+		
+	-- problem statement	
+		-- Read data from logs
+		-- Write unprocessed data and as well as streaming department count data to HDFS
+			-- Development
+				- Update build.sbt
+				- Create a new program
+				- complete build.jar
+			-- Run and Validate
+				- Ship it to cluster
+				- Run flume agent
+				- Run spark submit with jars
+				- validate whether files are being generated or not
+				
+				
+	-- Lets us create a confifuration file that will help us to connect the spark agent to HDFS. Lets say "fluToSpark.config" in a folder called "fluToSpark". Then create the configuration file
+		
+		# example.conf: A single-node Flume configuration 
+	
+		# Name the components of the agent
+		
+		fts.sources = ws
+		fts.sinks = hd
+		fts.channels = hdmem sparkmem
+		
+		#Describe the configuration of source
+		
+		fts.sources.ws.type = exec
+		fts.sources.ws.commad = tail -F /home/kazaparv_gmail_com/scripts/scripts/gen_logs/logs/access.log 
+		
+		# Descirbe the sink to HDFS
+		
+		fts.sinks.hd.hdfs.filePrefix = FlumeDemo
+		fts.sinks.hd.hdfs.fileSuffix = .txt
+		fts.sinks.hd.hdfs.rollInterval = 5
+		fts.sinks.hd.hdfs.rollSize = 1048576
+		fts.sinks.hd.hdfs.rollCount = 100
+		fts.sinks.hd.hdfs.fileType = DataStream
+		
+			# Sink connection to webservice
+			fts.sinks.spark.type = org.apache.spark.streaming.flume.sink.SparkSink       
+			fts.sinks.spark.hostname = cloudera.mettl.com  
+			fts.sinks.spark.port = 8123
+  
+		
+		
+		# Describe the channles
+		
+		fts.channels.hdmem.type = memory
+		fts.channels.hdmem.capacity = 1000
+		fts.channles.hdmem.transactionCapacity = 100
+		
+		fts.channels.sparkmem.type = memory
+		fts.channels.sparkmem.capacity = 1000
+		fts.channels.sparkmem.transactionCapacity = 100
+		
+		#Bind sources to sink
+		
+		fts.sources.ws.channels = hdmem
+		fts.sinks.hd.channel = hdmem
+		fts.sinks.spark.channel = sparkmem
+		
+		
+	-- Now, we can get the data from in two ways, a) push the data Flume or Pull data from flume to sink.
+	
+		find /usr -name "*.jar" 		
+		/usr/share/cmf/cloudera-navigator-server/jars
+		/usr/share/cmf/cloudera-navigator-server/libs/cdh4
+		/usr/share/cmf/cloudera-navigator-server/libs/cdh5
+		/usr/share/cmf/cloudera-navigator-audit-server/
+		/usr/share/cmf/csd/
+		/usr/share/cmf/cloudera-scm-telepub/jars/
+		/usr/share/cmf/cloudera-scm-telepub/libs/cdh5/
+		
+	-- Now making sure that we have downloaded the jar files 
+
+		Scala - libarary Jar is found in "/usr/share/cmf/cloudera-scm-telepub/jars" - "scala-library-2.10.0.jar"
+		/usr/share/cmf/cloudera-scm-telepub/libs/cdh5 - "commons-lang3-3.1.jar"
+		/usr/share/cmf/cloudera-navigator-server/libs/cdh5
+		
+		
+	-- download the jar file -from "https://spark.apache.org/docs/2.1.0/streaming-flume-integration.html"
+		
+		-- Then upload the jar file to /user/kazaparv_gmail_com/spark-streaming-flume-sink_2.11-2.1.0.jar
+		-- move the jar file to path "/usr/share/cmf/cloudera-scm-telepub/libs/cdh5" by using the command
+		-- hadoop fs -get /user/kazaparv_gmail_com/spark-streaming-flume-sink_2.11-2.1.0.jar /usr/share/cmf/cloudera-navigator-server/libs/cdh5
+		
+	-- Now run the flume agent
+		flume-ng agent -n fts -f fluToSpark.config
+		
+	- Expected output
+	8/03/17 21:05:38 INFO hdfs.BucketWriter: Creating hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt.tmp         
+	18/03/17 21:05:44 INFO hdfs.BucketWriter: Closing hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt.tmp
+	18/03/17 21:05:44 INFO hdfs.BucketWriter: Renaming hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt.tmp to hdfs://cloudera.mettl.com:8020/user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt
+	
+	-- Then, Open this file in hadoop
+	-- hdfs fs -tail /user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt will give a data
+			kazaparv_gmail_com@cloudera:~$ hadoop fs -tail /user/kazaparv_gmail_com/flume_demo/FlumeDemo.1521320738263.txt       
+			Version/7.0.5 Safari/537.77.4"       
+			69.47.246.76 - - [01/Aug/2014:11:51:49 -0400] "GET /department/fitness/categories HTTP/1.1" 200 311 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:30.0) Gecko/20100101 Firefox/30.0
+			"      
+			71.82.19.241 - - [01/Aug/2014:11:51:50 -0400] "GET /product/291 HTTP/1.1" 200 458 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.9; rv:30.0) Gecko/20100101 Firefox/30.0"        
+			178.64.216.6 - - [01/Aug/2014:11:51:51 -0400] "GET /department/apparel/products HTTP/1.1" 200 741 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.36 (KHTML, 
+			like Gecko) Chrome/35.0.1916.153 Safari/537.36"
+			211.60.231.72 - - [01/Aug/2014:11:51:52 -0400] "GET /product/567 HTTP/1.1" 200 2024 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.77.4 (KHTML, like Gecko) 
+			Version/7.0.5 Safari/537.77.4"       
+			94.192.11.50 - - [01/Aug/2014:11:51:53 -0400] "GET /add_to_cart/1025 HTTP/1.1" 200 869 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_4) AppleWebKit/537.77.4 (KHTML, like Geck
+			o) Version/7.0.5 Safari/537.77.4"
+			
+	-- Now lets update build.sbt with the right spark details, to channelize the data
+		
+			libraryDependencies += "org.apache.spark" % "spark-streaming-flume-sink_2.11" % "1.6.3"
+			libraryDependencies += "org.apache.spark" % "park-streaming-flume_2.10" % "1.6.3"
+			libraryDependencies += "org.apache.spark" % "scala-library" % "2.10.0" 
+			libraryDependencies += "org.apache.spark" % "commons-lang3" % "3.3.1" 
+		
+			
